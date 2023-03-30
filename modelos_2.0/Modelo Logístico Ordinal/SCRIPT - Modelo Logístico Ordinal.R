@@ -3,8 +3,10 @@
 ##################################################################################
 #Pacotes utilizados
 pacotes <- c("plotly","tidyverse","knitr","kableExtra","fastDummies","rgl","car",
-             "reshape2","jtools","lmtest","caret","pROC","ROCR","nnet","magick",
-             "cowplot")
+             "reshape2","jtools","stargazer","lmtest","caret","pROC","ROCR","nnet",
+             "magick","cowplot","globals","equatiomatic")
+
+options(rgl.debug = TRUE)
 
 if(sum(as.numeric(!pacotes %in% installed.packages())) != 0){
   instalador <- pacotes[!pacotes %in% installed.packages()]
@@ -54,7 +56,7 @@ Atrasado %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 25)
 
 #Estatísticas descritivas univariadas da base de dados
 summary(Atrasado)
@@ -71,16 +73,31 @@ modelo_atrasos <- glm(formula = atrasado ~ dist + sem,
 
 #Parâmetros do modelo_atrasos
 summary(modelo_atrasos)
-#Note que não há a explicitação do estatística geral do modelo,
+
+#Visualização do modelo no ambiente Viewer
+#função 'extract_eq' do pacote 'equatiomatic'
+extract_eq(modelo_atrasos, use_coefs = T,
+           wrap = T, show_distribution = T) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "striped",
+                full_width = F,
+                font_size = 25)
+
+#Note que o summary() do modelo não traz a estatística geral do modelo,
 #nem tampouco do valor de LL e dos intervalos de confiança.
+
+# Extração dos intervalos de confiança ao nível de siginificância de 5%
+confint(modelo_atrasos, level = 0.95)
 
 #Extração do valor de Log-Likelihood (LL)
 logLik(modelo_atrasos)
 
-#Outras maneiras de apresentar os outputs do modelo
-#função summ do pacote jtools
+# Outras maneiras de apresentar os outputs do modelo
+#Funções 'summ' e 'export_summs' do pacote 'jtools' e função 'stargazer' do
+#pacote 'stargazer'
 summ(modelo_atrasos, confint = T, digits = 3, ci.width = .95)
 export_summs(modelo_atrasos, scale = F, digits = 6)
+stargazer(modelo_atrasos, nobs = T, type = "text") # mostra o valor de Log-Likelihood
 
 #Fazendo predições para o modelo_atrasos. Exemplo: qual a probabilidade média
 #de se chegar atrasado quando o trajeto tem 7 km e passa-se por 10 semáforos no percurso?
@@ -91,7 +108,7 @@ predict(object = modelo_atrasos,
 ##############################################################################
 #               EXEMPLO 01 - CONSTRUÇÃO DE UMA MATRIZ DE CONFUSÃO            #
 ##############################################################################
-# Adicionando os valores previstos de probabilidade da base de dados
+# Adicionando os valores previstos de probabilidade na base de dados
 Atrasado$phat <- modelo_atrasos$fitted.values
 
 #Visualizando a base de dados com a variável 'phat'
@@ -99,7 +116,54 @@ Atrasado %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
+
+# Ajuste linear entre a variável dependente e a variável 'sem' (apenas para fins
+#didáticos)
+ggplotly(
+  Atrasado %>% 
+    ggplot() +
+    geom_point(aes(x = sem, y = atrasado), color = "orange", size = 2) +
+    geom_smooth(aes(x = sem, y = phat), 
+                method = "lm", formula = y ~ x,
+                se = FALSE,
+                color = "darkorchid", size = 2) +
+    labs(x = "Quantidade de Semáforos",
+         y = "Atrasado") +
+    theme_bw()
+)
+
+# Ajuste logístico determinístico entre a variável dependente e a variável 'sem'
+#Sigmóide
+ggplotly(
+  Atrasado %>% 
+    ggplot() +
+    geom_point(aes(x = sem, y = atrasado), color = "orange", size = 2) +
+    geom_smooth(aes(x = sem, y = phat), 
+                method = "glm", formula = y ~ x, 
+                method.args = list(family = "binomial"), 
+                se = FALSE,
+                color = "darkorchid", size = 2) +
+    labs(x = "Quantidade de Semáforos",
+         y = "Atrasado") +
+    theme_bw()
+)
+
+# Ajuste logístico probabilístico entre a variável dependente e a variável 'sem'
+#Sigmóide
+ggplotly(
+  Atrasado %>% 
+    ggplot() +
+    geom_point(aes(x = sem, y = phat), color = "orange", size = 2) +
+    geom_smooth(aes(x = sem, y = phat), 
+                method = "glm", formula = y ~ x, 
+                method.args = list(family = "binomial"), 
+                se = FALSE,
+                color = "darkorchid", size = 2) +
+    labs(x = "Quantidade de Semáforos",
+         y = "Atrasado") +
+    theme_bw()
+)
 
 #Matriz de confusão para cutoff = 0.5 (função confusionMatrix do pacote caret)
 confusionMatrix(table(predict(modelo_atrasos, type = "response") >= 0.5,
@@ -118,7 +182,7 @@ data.frame(Sensitividade = confusionMatrix(table(predict(modelo_atrasos,
   kable() %>%
   kable_styling(bootstrap_options = "striped", position = "center",
                 full_width = F, 
-                font_size = 12)
+                font_size = 27)
 
 #Matriz de confusão para cutoff = 0.3
 confusionMatrix(table(predict(modelo_atrasos, type = "response") >= 0.3,
@@ -140,7 +204,7 @@ confusionMatrix(table(predict(modelo_atrasos, type = "response") >= 0.7,
 
 #função prediction do pacote ROCR
 predicoes <- prediction(predictions = modelo_atrasos$fitted.values, 
-                        labels = Atrasado$atrasado) 
+                        labels = as.factor(Atrasado$atrasado))
 #a função prediction, do pacote ROCR, cria um objeto com os dados necessários
 #para a futura plotagem da curva ROC.
 
@@ -150,7 +214,7 @@ dados_curva_roc <- performance(predicoes, measure = "sens")
 #dados de sensitividade e de especificidade para a plotagem.
 
 #Desejamos os dados da sensitividade e de especificidade. Então, devemos
-#digitar os seguintes códigos::
+#digitar os seguintes códigos:
 
 sensitividade <- (performance(predicoes, measure = "sens"))@y.values[[1]] 
 
@@ -166,12 +230,12 @@ cutoffs <- dados_curva_roc@x.values[[1]]
 
 dados_plotagem <- cbind.data.frame(cutoffs, especificidade, sensitividade)
 
-#Visualizando o novo data frame dados_plotagem
+#Visualizando o novo dataframe dados_plotagem
 dados_plotagem %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 #Plotando:
 ggplotly(dados_plotagem %>%
@@ -198,20 +262,24 @@ ggplotly(dados_plotagem %>%
 ROC <- roc(response = Atrasado$atrasado, 
            predictor = modelo_atrasos$fitted.values)
 
-ggplotly(
-  ggroc(ROC, color = "#440154FF", size = 1) +
-    geom_segment(aes(x = 1, xend = 0, y = 0, yend = 1),
-                 color="grey40",
-                 size = 0.2) +
-    labs(x = "Especificidade",
-         y = "Sensitividade",
-         title = paste("Área abaixo da curva:",
-                       round(ROC$auc, 3),
-                       "|",
-                       "Coeficiente de Gini",
-                       round((ROC$auc[1] - 0.5) / 0.5, 3))) +
-    theme_bw()
-)
+#Plotagem da curva ROC propriamente dita
+ggplot() +
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1),
+               color = "grey40", size = 0.2) +
+  geom_line(aes(x = 1 - especificidade, y = sensitividade),
+            color = "darkorchid", size = 2) +
+  labs(x = "1 - Especificidade",
+       y = "Sensitividade",
+       title = paste("Área abaixo da curva:",
+                     round(ROC$auc, 4),
+                     "|",
+                     "Coeficiente de Gini:",
+                     round((ROC$auc[1] - 0.5) / 0.5, 4))) +
+  theme(panel.background = element_rect(NA),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10)
+  )
 
 
 ##############################################################################
@@ -228,7 +296,7 @@ challenger %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 #desgaste: quantidade de vezes em que ocorreu stress térmico
 #temperatura: temperatura de lançamento (graus ºF)
@@ -257,16 +325,16 @@ challenger %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped",
                 full_width = F,
-                font_size = 12)
+                font_size = 22)
 
 #Estimando o modelo logístico binário
 modelo_challenger <- glm(formula = falha ~ . -desgaste -t,
                          data = challenger,
                          family = "binomial")
 
-#Parâmetros do modelo_default
+#Parâmetros do modelo_challenger
 summary(modelo_challenger)
-#Note que não há a explicitação do estatística geral do modelo,
+#Note que não há a explicitação da estatística geral do modelo,
 #nem tampouco do valor de LL e dos intervalos de confiança.
 
 #Uma solução rápida para o caso pode ser a utilização da função summ do pacote jtools
@@ -334,7 +402,7 @@ dados_fidelidade %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped",
                 full_width = F,
-                font_size = 12)
+                font_size = 13)
 
 #Estatísticas Univariadas da Base de Dados
 summary(dados_fidelidade)
@@ -425,8 +493,9 @@ logLik(step_fidelidade_dummies)
 #função lrtest do pacote lmtest
 lrtest(modelo_fidelidade_dummies, step_fidelidade_dummies)
 
-export_summs(modelo_fidelidade_dummies, step_fidelidade_dummies, scale = F,
-             digits = 4)
+export_summs(modelo_fidelidade_dummies, step_fidelidade_dummies,
+             model.names = c("Modelo Dummies","Modelo Dummies Stepwise"),
+             scale = F, digits = 4)
 
 ##############################################################################
 #              EXEMPLO 03 - CONSTRUÇÃO DE UMA MATRIZ DE CONFUSÃO             #
@@ -478,12 +547,12 @@ cutoffs <- dados_curva_roc@x.values[[1]]
 
 dados_plotagem <- cbind.data.frame(cutoffs, especificidade, sensitividade)
 
-#Visualizando o novo data frame dados_plotagem
+#Visualizando o novo dataframe dados_plotagem
 dados_plotagem %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 #Plotando:
 ggplotly(dados_plotagem %>%
@@ -509,20 +578,24 @@ ggplotly(dados_plotagem %>%
 ROC <- roc(response = dados_fidelidade$fidelidade, 
            predictor = step_fidelidade_dummies$fitted.values)
 
-ggplotly(
-  ggroc(ROC, color = "#440154FF", size = 1) +
-    geom_segment(aes(x = 1, xend = 0, y = 0, yend = 1),
-                 color="grey40",
-                 size = 0.2) +
-    labs(x = "Especificidade",
-         y = "Sensitividade",
-         title = paste("Área abaixo da curva:",
-                       round(ROC$auc, 3),
-                       "|",
-                       "Coeficiente de Gini",
-                       round((ROC$auc[1] - 0.5) / 0.5, 3))) +
-    theme_bw()
-)
+#Plotagem da curva ROC propriamente dita
+ggplot() +
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1),
+               color = "grey40", size = 0.2) +
+  geom_line(aes(x = 1 - especificidade, y = sensitividade),
+            color = "darkorchid", size = 2) +
+  labs(x = "1 - Especificidade",
+       y = "Sensitividade",
+       title = paste("Área abaixo da curva:",
+                     round(ROC$auc, 4),
+                     "|",
+                     "Coeficiente de Gini:",
+                     round((ROC$auc[1] - 0.5) / 0.5, 4))) +
+  theme(panel.background = element_rect(NA),
+        panel.border = element_rect(color = "black", fill = NA),
+        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 10)
+  )
 
 
 ##############################################################################
@@ -539,7 +612,7 @@ AtrasadoMultinomial %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 #Estatísticas descritivas univariadas da base de dados
 summary(AtrasadoMultinomial)
@@ -549,7 +622,7 @@ summary(AtrasadoMultinomial)
 ##############################################################################
 #Apontando a categoria de referência
 AtrasadoMultinomial$atrasado <- relevel(AtrasadoMultinomial$atrasado, 
-                                  ref = "não chegou atrasado")
+                                  ref = "nao chegou atrasado")
 
 #Estimação do modelo - função multinom do pacote nnet
 modelo_atrasado <- multinom(formula = atrasado ~ dist + sem, 
@@ -557,6 +630,10 @@ modelo_atrasado <- multinom(formula = atrasado ~ dist + sem,
 
 #Parâmetros do modelo_atrasado
 summary(modelo_atrasado)
+
+#Outra maneira de apresentar os outputs do modelo
+#função stargazer do pacote stargazer -> mais adequado que a função export_summs
+stargazer(modelo_atrasado, nobs=T, type="text")
 
 #LL do modelo_atrasado
 logLik(modelo_atrasado)
@@ -585,10 +662,10 @@ Qui2(modelo_atrasado)
 #Explicando a lógica do R para a Logística Multinomial:
 
 #1 - Foram estabelecidas *labels* para as categorias da variável dependente: 
-#'não chegou atrasado', 'chegou atrasado à primeira aula' e 'chegou atrasado à
+#'nao chegou atrasado', 'chegou atrasado à primeira aula' e 'chegou atrasado à
 #segunda aula';
 
-#2 - Foi comandado que a categoria de referência seria a categoria 'não chegou
+#2 - Foi comandado que a categoria de referência seria a categoria 'nao chegou
 #atrasado', e isso explica o porquê dela não aparecer no relatório gerado;
 
 #3 - O relatório é dividido em duas partes: 'Coefficients' e 'Std. Errors'. 
@@ -611,9 +688,9 @@ zWald_modelo_atrasado
 #normal padronizada (distribuição bicaudal). Desta forma, temos que:
 round((pnorm(abs(zWald_modelo_atrasado), lower.tail = F) * 2), 4)
 
-#Fazendo predições para o modelo_atrasado Exemplo: qual a probabilidade média
+#Fazendo predições para o modelo_atrasado. Exemplo: qual a probabilidade média
 #de atraso para cada categoria da variável dependente, se o indivíduo tiver 
-#que percorrer 22km e passar por 12 semáforos.
+#que percorrer 22km e passar por 12 semáforos?
 predict(modelo_atrasado, 
         data.frame(dist = 22, sem = 12), 
         type = "probs")
@@ -636,19 +713,19 @@ AtrasadoMultinomial %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 attach(AtrasadoMultinomial)
 
 #Criando uma tabela para comparar as ocorrências reais com as predições
-EGM <- as.data.frame.matrix(table(atrasado, predicao))
+EGM <- as.data.frame.matrix(table(predicao, atrasado))
 
 #Visualizando a tabela EGM
 EGM %>%
   kable() %>%
   kable_styling(bootstrap_options = "striped", 
                 full_width = F, 
-                font_size = 12)
+                font_size = 22)
 
 #Eficiência global do modelo
 acuracia <- (round((sum(diag(table(atrasado, predicao))) / 
@@ -663,7 +740,7 @@ acuracia
 #Adicionando à base de dados as probabilidades em razão de cada categoria:
 levels(AtrasadoMultinomial$atrasado)
 
-AtrasadoMultinomial[c("não chegou atrasado",
+AtrasadoMultinomial[c("nao chegou atrasado",
                       "chegou atrasado à primeira aula",
                       "chegou atrasado à segunda aula")] <- modelo_atrasado$fitted.values
 
@@ -676,7 +753,7 @@ ggplotly(
          value.name = "probabilidades") %>% 
     rename(categorias = variable) %>%
     mutate(categorias = factor(categorias,
-                               levels = c("não chegou atrasado",
+                               levels = c("nao chegou atrasado",
                                           "chegou atrasado à primeira aula",
                                           "chegou atrasado à segunda aula"))) %>% 
     ggplot() +
@@ -698,7 +775,7 @@ ggplotly(
          value.name = "probabilidades") %>% 
     rename(categorias = variable) %>%
     mutate(categorias = factor(categorias,
-                               levels = c("não chegou atrasado",
+                               levels = c("nao chegou atrasado",
                                           "chegou atrasado à primeira aula",
                                           "chegou atrasado à segunda aula"))) %>% 
     ggplot() +
@@ -711,10 +788,10 @@ ggplotly(
     theme_bw()
 )
 
-#Plotagem tridimensional para cada probabilidade de ocorrência de cada cada
+#Plotagem tridimensional para cada probabilidade de ocorrência de cada
 #categoria da variável dependente
 
-AtrasadoMultinomial$p0 <- AtrasadoMultinomial$`não chegou atrasado`
+AtrasadoMultinomial$p0 <- AtrasadoMultinomial$`nao chegou atrasado`
 AtrasadoMultinomial$p1 <- AtrasadoMultinomial$`chegou atrasado à primeira aula`
 AtrasadoMultinomial$p2 <- AtrasadoMultinomial$`chegou atrasado à segunda aula`
 
@@ -722,30 +799,28 @@ AtrasadoMultinomial$p2 <- AtrasadoMultinomial$`chegou atrasado à segunda aula`
 #p0 - Probabilidades de não chegar atrasado (função scatter3d do pacote car):
 scatter3d(AtrasadoMultinomial$dist,AtrasadoMultinomial$p0,
           AtrasadoMultinomial$sem,
-          groups = AtrasadoMultinomial$atrasado,
           data = AtrasadoMultinomial,
           fit = "smooth")
 
 #Outro modo:
 plot_ly(x = AtrasadoMultinomial$dist, 
         y = AtrasadoMultinomial$sem, 
-        z = AtrasadoMultinomial$`não chegou atrasado`,
+        z = AtrasadoMultinomial$`nao chegou atrasado`,
         type = "mesh3d",
         name = "ótimo",
-        intensity = AtrasadoMultinomial$`não chegou atrasado`,
+        intensity = AtrasadoMultinomial$`nao chegou atrasado`,
         colors = colorRamp(c("red","yellow","chartreuse3","lightblue","blue"))) %>% 
   layout(showlegend = T,
          scene = list(
            xaxis = list(title = "Distância"),
            yaxis = list(title = "Semáforos"),
            zaxis = list(title = "Probabilidade")),
-         title = "Categoria Não Chegou Atrasado")
+         title = "Categoria nao chegou Atrasado")
 
 
 #p1 - Probabilidades de chegar atrasado à primeira aula:
 scatter3d(AtrasadoMultinomial$dist,AtrasadoMultinomial$p1,
           AtrasadoMultinomial$sem,
-          groups = AtrasadoMultinomial$atrasado,
           data = AtrasadoMultinomial,
           fit = "smooth")
 
@@ -768,7 +843,6 @@ plot_ly(x = AtrasadoMultinomial$dist,
 #p2 - Probabilidades de chegar atrasado à segunda aula:
 scatter3d(AtrasadoMultinomial$dist,AtrasadoMultinomial$p2,
           AtrasadoMultinomial$sem,
-          groups = AtrasadoMultinomial$atrasado,
           data = AtrasadoMultinomial,
           fit = "smooth")
 
@@ -791,9 +865,9 @@ plot_ly(x = AtrasadoMultinomial$dist,
 #Visualização das sigmóides tridimensionais em um único gráfico:
 naoatrasado <- plot_ly(x = AtrasadoMultinomial$dist, 
                        y = AtrasadoMultinomial$sem, 
-                       z = AtrasadoMultinomial$`não chegou atrasado`,
+                       z = AtrasadoMultinomial$`nao chegou atrasado`,
                        type = "mesh3d",
-                       name = "não chegou atrasado") %>%
+                       name = "nao chegou atrasado") %>%
   layout(showlegend = T,
          scene = list(
            xaxis = list(title = "Distância"),
